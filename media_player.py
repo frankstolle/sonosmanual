@@ -19,6 +19,15 @@ class LazySoCoHelper():
         self.connectors_toinit = []
         self.init_thread = None
         self.entity_added = threading.Event()
+        self.zonenames=dict()
+
+    def register_zonename(self, zonename, ip):
+        self.zonenames[ip] = zonename
+
+    def get_zonename(self, ip):
+        if ip in self.zonenames:
+            return self.zonenames[ip]
+        return None
 
     def registerSoCo(self, soco):
         with self._lock:
@@ -38,18 +47,25 @@ class LazySoCoHelper():
     def discover(self, callback):
         with self._lock:
             for soco in self.connectors:
-                callback(soco)
+                try:
+                    callback(soco)
+                except Exception as e:
+                    # error on satellite nodes with no element found on calling shufle
+                    pass
 
     def _initthread(self):
         asyncio.set_event_loop(asyncio.new_event_loop())
         while True:
             connectors_toinit = []
             with self._lock:
+                connectors_to_remove = []
                 for connector in self.connectors_toinit:
                     if connector.is_lazy_connected():
-                        self.connectors_toinit.remove(connector)
+                        connectors_to_remove.append(connector)
                     else:
                         connectors_toinit.append(connector)
+                for connector in connectors_to_remove:
+                    self.connectors_toinit.remove(connector)
                 if not connectors_toinit:
                     self.init_thread = None
                     break
@@ -64,8 +80,7 @@ class LazySoCoHelper():
         futures = []
         for connector in connectors_toinit:
             futures.append(connector._initialize(loop))
-        for future in futures:
-            await future
+        await asyncio.gather(*futures, loop=loop)
 
 
 helper = LazySoCoHelper()
@@ -96,10 +111,10 @@ class EmptyMusicLibrary():
 
 
 class LazySoCo(SoCo):
-    def __init__(self, ip, zoneName):
+    def __init__(self, ip):
         self._lazyuid = None
         self._inited = False
-        self._lazyZoneName = zoneName
+        self._lazyZoneName = helper.get_zonename(ip)
         self._ip = ip
         super().__init__(ip)
         helper.registerSoCo(self)
@@ -136,17 +151,29 @@ class LazySoCo(SoCo):
             return super().shuffle
         return False
 
+    @shuffle.setter
+    def shuffle(self, shuffle):
+        SoCo.shuffle.fset(self, shuffle)
+
     @property
     def volume(self):
         if self._inited:
             return super().volume
         return 0
+    
+    @volume.setter
+    def volume(self, volume):
+        SoCo.volume.fset(self, volume)
 
     @property
     def mute(self):
         if self._inited:
             return super().mute
         return True
+
+    @mute.setter
+    def mute(self, mute):
+        SoCo.mute.fset(self, shuffle)
 
     @property
     def night_mode(self):
@@ -220,6 +247,7 @@ class LazySoCo(SoCo):
 
 
 pysonos.SoCo = LazySoCo
+pysonos.config.SOCO_CLASS=LazySoCo
 
 
 def static_discover_thread(callback,
@@ -257,6 +285,7 @@ async def async_setup_platform(hass,
     """
     try:
         for host in config['hosts']:
-            LazySoCo(host['ip'], host['name'])
+            helper.register_zonename(host['name'], host['ip'])
+            LazySoCo(host['ip'])
     except Exception as e:
         print(traceback.format_exc())

@@ -6,6 +6,11 @@ Home Assistant Component to define static Sonos Environment. The devices are als
 
 Just clone or copy this repository to your home assistant configuration directory in the subdir custom_components/sonosmanual
 
+## Supported Versions
+
+Tested with Home Assistant:
+- 0.93.1
+
 ## Configuration
 
 Add your Sonos entities to your configuration.yaml:
