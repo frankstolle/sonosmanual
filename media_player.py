@@ -173,7 +173,7 @@ class LazySoCo(SoCo):
 
     @mute.setter
     def mute(self, mute):
-        SoCo.mute.fset(self, shuffle)
+        SoCo.mute.fset(self, mute)
 
     @property
     def night_mode(self):
